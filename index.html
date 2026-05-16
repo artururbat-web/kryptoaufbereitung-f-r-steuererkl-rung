@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Krypto zu WISO Sparbuch</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; background: #f5f7fb; color: #162033; }
+    main { max-width: 860px; margin: 0 auto; padding: 32px 18px 48px; }
+    .card { background: white; border-radius: 18px; box-shadow: 0 12px 40px rgb(27 39 70 / 12%); padding: 24px; margin: 18px 0; }
+    h1 { font-size: clamp(2rem, 7vw, 3.5rem); line-height: 1; margin: 0 0 12px; }
+    label { display: block; font-weight: 700; margin: 16px 0 6px; }
+    input, select, button { font: inherit; border-radius: 12px; border: 1px solid #c9d3e7; padding: 12px; width: 100%; box-sizing: border-box; }
+    button { background: #0a66ff; color: white; border: 0; font-weight: 800; margin-top: 18px; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .hint { color: #53627c; }
+    .status { white-space: pre-wrap; border-left: 4px solid #0a66ff; padding: 10px 14px; background: #eef4ff; border-radius: 10px; }
+    @media (prefers-color-scheme: dark) { body { background: #0f172a; color: #e5edf8; } .card { background: #172033; } .hint { color: #a9b8cf; } .status { background: #13294b; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Krypto → WISO Sparbuch</h1>
+    <p class="hint">Fertige Browser-App für Bitvavo-Exporte und normalisierte CSV-Dateien. Die Verarbeitung läuft lokal im Browser; deine Datei wird nicht hochgeladen.</p>
+
+    <section class="card">
+      <label for="file">Bitvavo-CSV/TSV oder normalisierte CSV auswählen</label>
+      <input id="file" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values">
+
+      <label for="source">Eingabeformat</label>
+      <select id="source">
+        <option value="auto">Automatisch erkennen</option>
+        <option value="bitvavo">Bitvavo</option>
+        <option value="normalized">Normalisierte CSV</option>
+      </select>
+
+      <label for="tax-year">Steuerjahr</label>
+      <input id="tax-year" inputmode="numeric" placeholder="z. B. 2026">
+
+      <label for="holding-period">Haltefrist in Tagen</label>
+      <input id="holding-period" inputmode="numeric" value="365">
+
+      <button id="generate">WISO-Datei erzeugen</button>
+    </section>
+
+    <section class="card">
+      <h2>Status</h2>
+      <p id="status" class="status">Bitte Datei auswählen und WISO-Datei erzeugen.</p>
+      <a id="download" hidden download="wiso_sparbuch_import.csv">WISO-Sparbuch-Import herunterladen</a>
+    </section>
+
+    <section class="card">
+      <h2>iPad-Nutzung</h2>
+      <ol>
+        <li>Bitvavo-Export in „Dateien“ speichern.</li>
+        <li>Diese Seite in Safari öffnen.</li>
+        <li>Datei auswählen, Steuerjahr eintragen und CSV herunterladen.</li>
+        <li>Die erzeugte Datei in WISO weiterverwenden.</li>
+      </ol>
+    </section>
+  </main>
+  <script type="module">
+    import { createWisoCsvFromText } from './crypto_tax_prep_web.mjs';
+
+    const fileInput = document.getElementById('file');
+    const sourceInput = document.getElementById('source');
+    const taxYearInput = document.getElementById('tax-year');
+    const holdingInput = document.getElementById('holding-period');
+    const generateButton = document.getElementById('generate');
+    const status = document.getElementById('status');
+    const download = document.getElementById('download');
+
+    generateButton.addEventListener('click', async () => {
+      download.hidden = true;
+      if (!fileInput.files?.[0]) {
+        status.textContent = 'Bitte zuerst eine Datei auswählen.';
+        return;
+      }
+      try {
+        const text = await fileInput.files[0].text();
+        const result = createWisoCsvFromText(text, {
+          source: sourceInput.value,
+          taxYear: taxYearInput.value.trim(),
+          holdingPeriodDays: holdingInput.value.trim() || 365,
+        });
+        const blob = new Blob([result.csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        download.href = url;
+        download.download = `wiso_sparbuch_import_${taxYearInput.value.trim() || 'alle_jahre'}.csv`;
+        download.hidden = false;
+        status.textContent = `Fertig. ${result.transactionCount} Transaktionen gelesen, ${result.rowCount} WISO-Zeilen erzeugt.`;
+      } catch (error) {
+        status.textContent = `Fehler: ${error.message}`;
+      }
+    });
+  </script>
+</body>
+</html>
