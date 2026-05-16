@@ -1,1 +1,1 @@
-# Kryptoaufbereitungungstool-WISO
+# Kryptoaufbereitungstool-WISO
