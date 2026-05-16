@@ -16,6 +16,9 @@
     button:disabled { opacity: .55; cursor: not-allowed; }
     .hint { color: #53627c; }
     .status { white-space: pre-wrap; border-left: 4px solid #0a66ff; padding: 10px 14px; background: #eef4ff; border-radius: 10px; }
+    .progress-wrap { margin-top: 12px; }
+    progress { width: 100%; height: 18px; accent-color: #0a66ff; }
+    .progress-label { display: block; margin-top: 6px; font-weight: 700; }
     @media (prefers-color-scheme: dark) { body { background: #0f172a; color: #e5edf8; } .card { background: #172033; } .hint { color: #a9b8cf; } .status { background: #13294b; } }
   </style>
 </head>
@@ -46,7 +49,11 @@
 
     <section class="card">
       <h2>Status</h2>
-      <p id="status" class="status">Bitte Datei auswählen und WISO-Datei erzeugen.</p>
+      <p id="status" class="status">Programm wird geladen …</p>
+      <div id="progress-wrap" class="progress-wrap" hidden>
+        <progress id="progress" value="0" max="100"></progress>
+        <span id="progress-label" class="progress-label">0 %</span>
+      </div>
       <a id="download" hidden download="wiso_sparbuch_import.csv">WISO-Sparbuch-Import herunterladen</a>
     </section>
 
@@ -60,40 +67,97 @@
       </ol>
     </section>
   </main>
-  <script type="module">
-    import { createWisoCsvFromText } from './crypto_tax_prep_web.mjs';
-
+  <script src="crypto_tax_prep_core.js"></script>
+  <script>
     const fileInput = document.getElementById('file');
     const sourceInput = document.getElementById('source');
     const taxYearInput = document.getElementById('tax-year');
     const holdingInput = document.getElementById('holding-period');
     const generateButton = document.getElementById('generate');
     const status = document.getElementById('status');
+    const progressWrap = document.getElementById('progress-wrap');
+    const progressBar = document.getElementById('progress');
+    const progressLabel = document.getElementById('progress-label');
     const download = document.getElementById('download');
 
-    generateButton.addEventListener('click', async () => {
-      download.hidden = true;
-      if (!fileInput.files?.[0]) {
-        status.textContent = 'Bitte zuerst eine Datei auswählen.';
-        return;
-      }
-      try {
-        const text = await fileInput.files[0].text();
-        const result = createWisoCsvFromText(text, {
-          source: sourceInput.value,
-          taxYear: taxYearInput.value.trim(),
-          holdingPeriodDays: holdingInput.value.trim() || 365,
-        });
-        const blob = new Blob([result.csv], { type: 'text/csv;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        download.href = url;
-        download.download = `wiso_sparbuch_import_${taxYearInput.value.trim() || 'alle_jahre'}.csv`;
-        download.hidden = false;
-        status.textContent = `Fertig. ${result.transactionCount} Transaktionen gelesen, ${result.rowCount} WISO-Zeilen erzeugt.`;
-      } catch (error) {
-        status.textContent = `Fehler: ${error.message}`;
-      }
-    });
+    function setStatus(message) {
+      status.textContent = message;
+    }
+
+    function setProgress(percent, label) {
+      const rounded = Math.max(0, Math.min(100, Math.round(percent)));
+      progressWrap.hidden = false;
+      progressBar.value = rounded;
+      progressLabel.textContent = `${rounded} %${label ? ` – ${label}` : ''}`;
+    }
+
+    function hideProgress() {
+      progressWrap.hidden = true;
+      progressBar.value = 0;
+      progressLabel.textContent = '0 %';
+    }
+
+    function waitForPaint() {
+      return new Promise((resolve) => {
+        requestAnimationFrame(() => setTimeout(resolve, 0));
+      });
+    }
+
+    function readSelectedFile(file) {
+      if (typeof file.text === 'function') return file.text();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'));
+        reader.readAsText(file, 'utf-8');
+      });
+    }
+
+    if (!window.CryptoTaxPrep || !window.CryptoTaxPrep.createWisoCsvFromText) {
+      generateButton.disabled = true;
+      setStatus('Fehler: Das Programm konnte nicht geladen werden. Bitte öffne die Datei über GitHub Pages oder einen lokalen Webserver und lade die Seite neu.');
+    } else {
+      setStatus('Programm geladen. Bitte Datei auswählen und WISO-Datei erzeugen.');
+      generateButton.addEventListener('click', async () => {
+        download.hidden = true;
+        if (!fileInput.files || !fileInput.files[0]) {
+          hideProgress();
+          setStatus('Bitte zuerst eine Datei auswählen.');
+          return;
+        }
+        try {
+          generateButton.disabled = true;
+          setStatus('Datei wird gelesen …');
+          setProgress(10, 'Datei wird gelesen');
+          await waitForPaint();
+          const text = await readSelectedFile(fileInput.files[0]);
+          setStatus('Transaktionen werden geprüft und sortiert …');
+          setProgress(35, 'Transaktionen werden geprüft');
+          await waitForPaint();
+          const result = window.CryptoTaxPrep.createWisoCsvFromText(text, {
+            source: sourceInput.value,
+            taxYear: taxYearInput.value.trim(),
+            holdingPeriodDays: holdingInput.value.trim() || 365,
+            onProgress: ({ percent, label }) => setProgress(percent, label),
+          });
+          setStatus('WISO-Datei wird vorbereitet …');
+          setProgress(90, 'Download wird vorbereitet');
+          await waitForPaint();
+          const blob = new Blob([result.csv], { type: 'text/csv;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          download.href = url;
+          download.download = `wiso_sparbuch_import_${taxYearInput.value.trim() || 'alle_jahre'}.csv`;
+          download.hidden = false;
+          setProgress(100, 'Fertig');
+          setStatus(`Fertig. ${result.transactionCount} Transaktionen gelesen, ${result.rowCount} WISO-Zeilen erzeugt. Bitte auf „WISO-Sparbuch-Import herunterladen“ tippen.`);
+        } catch (error) {
+          setProgress(100, 'Fehler');
+          setStatus(`Fehler: ${error.message}`);
+        } finally {
+          generateButton.disabled = false;
+        }
+      });
+    }
   </script>
 </body>
 </html>
