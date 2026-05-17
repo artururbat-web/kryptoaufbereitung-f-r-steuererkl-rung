@@ -113,7 +113,7 @@
       });
     }
 
-    if (!window.CryptoTaxPrep || !window.CryptoTaxPrep.createWisoCsvFromText) {
+    if (!window.CryptoTaxPrep || !window.CryptoTaxPrep.createWisoCsvFromTextAsync) {
       generateButton.disabled = true;
       setStatus('Fehler: Das Programm konnte nicht geladen werden. Bitte öffne die Datei über GitHub Pages oder einen lokalen Webserver und lade die Seite neu.');
     } else {
@@ -134,7 +134,7 @@
           setStatus('Transaktionen werden geprüft und sortiert …');
           setProgress(35, 'Transaktionen werden geprüft');
           await waitForPaint();
-          const result = window.CryptoTaxPrep.createWisoCsvFromText(text, {
+          const result = await window.CryptoTaxPrep.createWisoCsvFromTextAsync(text, {
             source: sourceInput.value,
             taxYear: taxYearInput.value.trim(),
             holdingPeriodDays: holdingInput.value.trim() || 365,
