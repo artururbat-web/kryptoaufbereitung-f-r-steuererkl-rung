@@ -140,6 +140,7 @@
       sell: "SELL",
       staking: "INCOME",
       fixed_staking: "INCOME",
+      rebate: "INCOME",
       deposit: "TRANSFER_IN",
       withdrawal: "TRANSFER_OUT",
       withdraw: "TRANSFER_OUT",
